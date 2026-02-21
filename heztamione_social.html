@@ -1,0 +1,477 @@
+       
+       
+       
+       <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="manifest" href="manifest.json">
+    <link rel="stylesheet" href="css/heztamione_social.css">
+    <title>Heztamione Chat</title>
+</head>
+<body>
+    <h1>Heztamione Chat</h1>
+    <div id="user-info" class="user-info" style="display: none;">
+        Welcome, <span id="username"></span>! <button onclick="logout()">Logout</button>
+    </div>
+    <div id="auth" class="auth">
+        <h2>Login</h2>
+        <input type="text" id="loginUsername" placeholder="Username">
+        <input type="password" id="loginPassword" placeholder="Password">
+        <button onclick="login()">Login</button>
+        <h2>Register</h2>
+        <input type="text" id="regUsername" placeholder="Username">
+        <input type="password" id="regPassword" placeholder="Password">
+        <button onclick="register()">Register</button>
+    </div>
+    <div id="post-section" class="post" style="display: none;">
+        <h2>Post a Message</h2>
+        <textarea id="postContent" placeholder="What's on your mind?" rows="4"></textarea>
+        <div class="image-input-container">
+            <label for="imageInput" class="image-input-label">📷 Add Image</label>
+            <input type="file" id="imageInput" accept="image/*">
+            <img id="imagePreview" class="image-preview">
+        </div>
+        <div class="video-input-container">
+            <label for="videoInput" class="video-input-label">🎥 Add Video</label>
+            <input type="file" id="videoInput" accept="video/*">
+            <video id="videoPreview" class="video-preview" controls></video>
+        </div>
+        <button onclick="createPost()">Post</button>
+    </div>
+    
+    <!-- Video Call Button -->
+    <div class="video-call-container" id="videoCallContainer" style="display: none;">
+        <button class="video-call-btn" onclick="openVideoCall()">
+            📹 Video Call
+        </button>
+    </div>
+    
+    <!-- Video Call Modal -->
+    <div class="video-call-modal" id="videoCallModal">
+        <div class="video-call-header">Video Call</div>
+        <div class="video-grid">
+            <div class="video-box">
+                <video id="localVideo" autoplay muted></video>
+                <label>You</label>
+            </div>
+            <div class="video-box">
+                <video id="remoteVideo" autoplay></video>
+                <label>Remote User</label>
+            </div>
+        </div>
+        <div class="waiting-message" id="waitingMessage">
+            Waiting for other participants to join...
+        </div>
+        <div class="call-controls">
+            <button class="call-control-btn" onclick="toggleMute()">🎤 Mute</button>
+            <button class="call-control-btn" onclick="toggleVideo()">📷 Camera</button>
+            <button class="call-control-btn end-call" onclick="endCall()">End Call</button>
+        </div>
+    </div>
+    
+    <div class="feed" id="feed">
+        <!-- Posts will be displayed here -->
+    </div>
+
+    <script>
+        // Initialize data from localStorage
+        let users = JSON.parse(localStorage.getItem('heztamioneUsers')) || [];
+        let posts = JSON.parse(localStorage.getItem('heztamionePosts')) || [];
+        let currentUser = localStorage.getItem('currentUser');
+
+        // Exclusive access check
+        const accessCode = 'heztamione2026'; // Change this to your desired code
+        let hasAccess = localStorage.getItem('hasAccess');
+
+        if (!hasAccess) {
+            const enteredCode = prompt('Enter access code to view Heztamione Chat:');
+            if (enteredCode === accessCode) {
+                localStorage.setItem('hasAccess', 'true');
+                hasAccess = 'true';
+            } else {
+                document.body.innerHTML = '<h1>Access Denied</h1><p>Incorrect access code.</p>';
+                throw new Error('Access denied');
+            }
+        }
+
+        let deferredPrompt;
+
+        window.addEventListener('beforeinstallprompt', event => {
+            event.preventDefault();
+            deferredPrompt = event;
+            // Show install button
+            const installButton = document.createElement('button');
+            installButton.textContent = 'Install App';
+            installButton.style.background = 'linear-gradient(90deg, #00f3ff, #8b00ff)';
+            installButton.style.color = 'white';
+            installButton.style.border = 'none';
+            installButton.style.padding = '10px 15px';
+            installButton.style.borderRadius = '8px';
+            installButton.style.cursor = 'pointer';
+            installButton.style.marginBottom = '10px';
+            installButton.style.fontFamily = 'Orbitron, sans-serif';
+            installButton.style.boxShadow = '0 0 15px rgba(0, 243, 255, 0.4)';
+            installButton.onclick = () => {
+                deferredPrompt.prompt();
+                deferredPrompt.userChoice.then(choice => {
+                    if (choice.outcome === 'accepted') {
+                        console.log('User accepted the install');
+                    }
+                    deferredPrompt = null;
+                    installButton.remove();
+                });
+            };
+            document.body.insertBefore(installButton, document.body.firstChild);
+        });
+
+        function checkAuth() {
+            if (currentUser) {
+                document.getElementById('auth').style.display = 'none';
+                document.getElementById('post-section').style.display = 'block';
+                document.getElementById('user-info').style.display = 'block';
+                document.getElementById('username').textContent = currentUser;
+            } else {
+                document.getElementById('auth').style.display = 'block';
+                document.getElementById('post-section').style.display = 'none';
+                document.getElementById('user-info').style.display = 'none';
+            }
+        }
+
+        function register() {
+            const username = document.getElementById('regUsername').value;
+            const password = document.getElementById('regPassword').value;
+            if (username && password) {
+                if (users.find(u => u.username === username)) {
+                    alert('User already exists');
+                    return;
+                }
+                users.push({username, password});
+                localStorage.setItem('heztamioneUsers', JSON.stringify(users));
+                alert('Registered successfully');
+                document.getElementById('regUsername').value = '';
+                document.getElementById('regPassword').value = '';
+            }
+        }
+
+        function login() {
+            const username = document.getElementById('loginUsername').value;
+            const password = document.getElementById('loginPassword').value;
+            const user = users.find(u => u.username === username && u.password === password);
+            if (user) {
+                currentUser = username;
+                localStorage.setItem('currentUser', currentUser);
+                checkAuth();
+                displayPosts();
+            } else {
+                alert('Invalid credentials');
+            }
+        }
+
+        function logout() {
+            currentUser = null;
+            localStorage.removeItem('currentUser');
+            checkAuth();
+        }
+
+        function likePost(index) {
+            if (!posts[index].likedBy) posts[index].likedBy = [];
+            if (posts[index].likedBy.includes(currentUser)) {
+                posts[index].likedBy = posts[index].likedBy.filter(u => u !== currentUser);
+            } else {
+                posts[index].likedBy.push(currentUser);
+            }
+            localStorage.setItem('heztamionePosts', JSON.stringify(posts));
+            displayPosts();
+        }
+
+        function toggleComments(index) {
+            const commentsDiv = document.getElementById(`comments-${index}`);
+            commentsDiv.style.display = commentsDiv.style.display === 'none' ? 'block' : 'none';
+        }
+
+        function addComment(index) {
+            const commentInput = document.getElementById(`commentInput-${index}`);
+            const comment = commentInput.value;
+            if (comment && currentUser) {
+                posts[index].comments = posts[index].comments || [];
+                posts[index].comments.push({ text: comment, user: currentUser });
+                localStorage.setItem('heztamionePosts', JSON.stringify(posts));
+                commentInput.value = '';
+                displayComments(index);
+                displayPosts(); // to update comment count
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification('New comment posted!', {
+                        body: `${currentUser}: ${comment}`,
+                        icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTI0IDI0SDhWMTRoMTZ2MTB6IiBmaWxsPSIjMjhhNzQ1Ii8+Cjwvc3ZnPmo='
+                    });
+                }
+            }
+        }
+
+        function displayComments(index) {
+            const commentList = document.getElementById(`commentList-${index}`);
+            commentList.innerHTML = '';
+            if (posts[index].comments) {
+                posts[index].comments.forEach(comment => {
+                    const commentDiv = document.createElement('div');
+                    commentDiv.className = 'comment';
+                    if (typeof comment === 'string') {
+                        commentDiv.textContent = comment;
+                    } else {
+                        commentDiv.textContent = `${comment.user}: ${comment.text}`;
+                    }
+                    commentList.appendChild(commentDiv);
+                });
+            }
+        }
+
+        // Image preview handler
+        document.getElementById('imageInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const preview = document.getElementById('imagePreview');
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(file);
+            } else {
+                preview.style.display = 'none';
+                preview.src = '';
+            }
+        });
+
+        // Modified createPost function to handle images
+        function createPost() {
+            const content = document.getElementById('postContent').value;
+            const imageInput = document.getElementById('imageInput');
+            const imagePreview = document.getElementById('imagePreview');
+            
+            if ((content || imageInput.files.length > 0) && currentUser) {
+                let imageData = null;
+                
+                // Convert image to base64 if selected
+                if (imageInput.files.length > 0) {
+                    imageData = imagePreview.src;
+                }
+                
+                posts.unshift({ 
+                    user: currentUser, 
+                    content: content, 
+                    image: imageData,
+                    likedBy: [], 
+                    comments: [] 
+                });
+                localStorage.setItem('heztamionePosts', JSON.stringify(posts));
+                document.getElementById('postContent').value = '';
+                imageInput.value = '';
+                imagePreview.style.display = 'none';
+                imagePreview.src = '';
+                displayPosts();
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification('New message posted!', {
+                        body: `${currentUser}: ${content}`,
+                        icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTI0IDI0SDhWMTRoMTZ2MTB6IiBmaWxsPSIjMDA3YmZmIi8+Cjwvc3ZnPmo='
+                    });
+                }
+            }
+        }
+
+        // Modified displayPosts function to show images
+        function displayPosts() {
+            const feed = document.getElementById('feed');
+            feed.innerHTML = '';
+            posts.forEach((post, index) => {
+                const postDiv = document.createElement('div');
+                postDiv.className = 'feed-item';
+                let imageHtml = '';
+                if (post.image) {
+                    imageHtml = `<img src="${post.image}" class="post-image" alt="Posted image">`;
+                }
+                postDiv.innerHTML = `
+                    <p><strong>${post.user}:</strong> ${post.content}</p>
+                    ${imageHtml}
+                    <div class="actions">
+                        <button onclick="likePost(${index})">${post.likedBy && post.likedBy.includes(currentUser) ? 'Unlike' : 'Like'} (${post.likedBy ? post.likedBy.length : 0})</button>
+                        <button onclick="toggleComments(${index})">Comments (${post.comments ? post.comments.length : 0})</button>
+                    </div>
+                    <div class="comments" id="comments-${index}" style="display: none;">
+                        <input type="text" id="commentInput-${index}" placeholder="Add a comment">
+                        <button onclick="addComment(${index})">Comment</button>
+                        <div id="commentList-${index}"></div>
+                    </div>
+                `;
+                feed.appendChild(postDiv);
+                if (post.comments) {
+                    displayComments(index);
+                }
+            });
+        }
+
+        // Load posts on page load
+        checkAuth();
+        displayPosts();
+        
+        // Show video call button when logged in
+        if (currentUser) {
+            document.getElementById('videoCallContainer').style.display = 'block';
+        }
+        
+        if ('Notification' in window && Notification.permission === 'default') {
+            Notification.requestPermission();
+        }
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('sw.js');
+        }
+        
+        // Video upload handling
+        document.getElementById('videoInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const preview = document.getElementById('videoPreview');
+            if (file) {
+                const url = URL.createObjectURL(file);
+                preview.src = url;
+                preview.style.display = 'block';
+            } else {
+                preview.style.display = 'none';
+                preview.src = '';
+            }
+        });
+        
+        // Modified createPost to handle videos
+        function createPost() {
+            const content = document.getElementById('postContent').value;
+            const imageInput = document.getElementById('imageInput');
+            const imagePreview = document.getElementById('imagePreview');
+            const videoInput = document.getElementById('videoInput');
+            const videoPreview = document.getElementById('videoPreview');
+            
+            if ((content || imageInput.files.length > 0 || videoInput.files.length > 0) && currentUser) {
+                let imageData = null;
+                let videoData = null;
+                
+                if (imageInput.files.length > 0) {
+                    imageData = imagePreview.src;
+                }
+                
+                if (videoInput.files.length > 0) {
+                    videoData = videoPreview.src;
+                }
+                
+                posts.unshift({ 
+                    user: currentUser, 
+                    content: content, 
+                    image: imageData,
+                    video: videoData,
+                    likedBy: [], 
+                    comments: [] 
+                });
+                localStorage.setItem('heztamionePosts', JSON.stringify(posts));
+                document.getElementById('postContent').value = '';
+                imageInput.value = '';
+                imagePreview.style.display = 'none';
+                imagePreview.src = '';
+                videoInput.value = '';
+                videoPreview.style.display = 'none';
+                videoPreview.src = '';
+                displayPosts();
+                if ('Notification' in window && Notification.permission === 'granted') {
+                    new Notification('New message posted!', {
+                        body: `${currentUser}: ${content}`,
+                        icon: 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTI0IDI0SDhWMTRoMTZ2MTB6IiBmaWxsPSIjMDA3YmZmIi8+Cjwvc3ZnPmo='
+                    });
+                }
+            }
+        }
+        
+        // Modified displayPosts to show videos
+        function displayPosts() {
+            const feed = document.getElementById('feed');
+            feed.innerHTML = '';
+            posts.forEach((post, index) => {
+                const postDiv = document.createElement('div');
+                postDiv.className = 'feed-item';
+                let imageHtml = '';
+                let videoHtml = '';
+                if (post.image) {
+                    imageHtml = `<img src="${post.image}" class="post-image" alt="Posted image">`;
+                }
+                if (post.video) {
+                    videoHtml = `<video src="${post.video}" class="video-container" controls></video>`;
+                }
+                postDiv.innerHTML = `
+                    <p><strong>${post.user}:</strong> ${post.content}</p>
+                    ${imageHtml}
+                    ${videoHtml}
+                    <div class="actions">
+                        <button onclick="likePost(${index})">${post.likedBy && post.likedBy.includes(currentUser) ? 'Unlike' : 'Like'} (${post.likedBy ? post.likedBy.length : 0})</button>
+                        <button onclick="toggleComments(${index})">Comments (${post.comments ? post.comments.length : 0})</button>
+                    </div>
+                    <div class="comments" id="comments-${index}" style="display: none;">
+                        <input type="text" id="commentInput-${index}" placeholder="Add a comment">
+                        <button onclick="addComment(${index})">Comment</button>
+                        <div id="commentList-${index}"></div>
+                    </div>
+                `;
+                feed.appendChild(postDiv);
+                if (post.comments) {
+                    displayComments(index);
+                }
+            });
+        }
+        
+        // Video Call Functions
+        let localStream = null;
+        let isMuted = false;
+        let isVideoOff = false;
+        
+        async function openVideoCall() {
+            const modal = document.getElementById('videoCallModal');
+            modal.classList.add('active');
+            
+            try {
+                localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                const localVideo = document.getElementById('localVideo');
+                localVideo.srcObject = localStream;
+            } catch (err) {
+                console.error('Error accessing media devices:', err);
+                alert('Could not access camera/microphone. Please check permissions.');
+            }
+        }
+        
+        function toggleMute() {
+            if (localStream) {
+                const audioTracks = localStream.getAudioTracks();
+                audioTracks.forEach(track => {
+                    track.enabled = !track.enabled;
+                });
+                isMuted = !isMuted;
+            }
+        }
+        
+        function toggleVideo() {
+            if (localStream) {
+                const videoTracks = localStream.getVideoTracks();
+                videoTracks.forEach(track => {
+                    track.enabled = !track.enabled;
+                });
+                isVideoOff = !isVideoOff;
+            }
+        }
+        
+        function endCall() {
+            if (localStream) {
+                localStream.getTracks().forEach(track => track.stop());
+                localStream = null;
+            }
+            const modal = document.getElementById('videoCallModal');
+            modal.classList.remove('active');
+            document.getElementById('localVideo').srcObject = null;
+            document.getElementById('remoteVideo').srcObject = null;
+        }
+    </script>
+</body>
+</html>
